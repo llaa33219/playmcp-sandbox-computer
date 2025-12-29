@@ -6,6 +6,7 @@ import {
   executeCommand,
   destroyContainer,
 } from './container-manager.js';
+import { getFileUrl } from './file-manager.js';
 
 /**
  * MCP 서버에 도구들을 등록합니다.
@@ -92,6 +93,32 @@ export function registerTools(server: McpServer): void {
     },
     async ({ container_id }) => {
       const result = await destroyContainer(container_id);
+      
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: result.message,
+          },
+        ],
+        isError: !result.success,
+      };
+    }
+  );
+
+  // 5. 파일 URL 생성 도구
+  server.tool(
+    'get_file_url',
+    '컨테이너 내부의 파일에 접근할 수 있는 URL을 생성합니다. 생성된 파일, 다운로드한 파일, 스크립트 결과물 등을 외부에서 접근할 수 있게 합니다. 주의: 이 URL은 컨테이너가 파괴되면 (최대 2시간 후) 더 이상 접근할 수 없습니다.',
+    {
+      container_id: z.string().describe('파일이 있는 컨테이너의 ID'),
+      file_path: z.string().describe('컨테이너 내부의 파일 경로 (예: /root/output.txt, /tmp/result.png)'),
+    },
+    async ({ container_id, file_path }) => {
+      // base URL 추출 (MCP 요청에서 얻거나 환경변수 사용)
+      const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+      
+      const result = await getFileUrl(container_id, file_path, baseUrl);
       
       return {
         content: [

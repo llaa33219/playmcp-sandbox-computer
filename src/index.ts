@@ -4,6 +4,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { registerTools } from './tools.js';
 import { cleanupAllContainers } from './container-manager.js';
+import { getFileInfo, cleanupAllFiles } from './file-manager.js';
+import * as fs from 'fs';
 
 const app = express();
 app.use(express.json());
@@ -155,6 +157,45 @@ app.get('/health', (_req, res) => {
   });
 });
 
+// 파일 서빙 엔드포인트
+app.get('/files/:fileId', (req, res) => {
+  const { fileId } = req.params;
+  const fileInfo = getFileInfo(fileId);
+  
+  if (!fileInfo) {
+    res.status(404).json({
+      error: '파일을 찾을 수 없습니다.',
+      message: '파일이 존재하지 않거나 컨테이너가 파괴되어 삭제되었습니다.',
+    });
+    return;
+  }
+  
+  // 파일 존재 확인
+  if (!fs.existsSync(fileInfo.localPath)) {
+    res.status(404).json({
+      error: '파일을 찾을 수 없습니다.',
+      message: '파일이 서버에서 삭제되었습니다.',
+    });
+    return;
+  }
+  
+  // Content-Type 및 Content-Disposition 헤더 설정
+  res.setHeader('Content-Type', fileInfo.mimeType);
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileInfo.fileName)}"`);
+  res.setHeader('Content-Length', fileInfo.size);
+  
+  // 파일 스트림 전송
+  const fileStream = fs.createReadStream(fileInfo.localPath);
+  fileStream.pipe(res);
+  
+  fileStream.on('error', (error) => {
+    console.error(`[File] 전송 오류: ${fileId}`, error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: '파일 전송 중 오류가 발생했습니다.' });
+    }
+  });
+});
+
 // 서버 시작
 const server = app.listen(PORT, () => {
   console.log(`[Server] MCP 컨테이너 샌드박스 서버가 포트 ${PORT}에서 실행 중입니다.`);
@@ -165,6 +206,9 @@ const server = app.listen(PORT, () => {
 // 종료 시그널 처리
 const gracefulShutdown = async (signal: string) => {
   console.log(`\n[Server] ${signal} 시그널 수신, 서버를 종료합니다...`);
+  
+  // 모든 파일 정리
+  await cleanupAllFiles();
   
   // 모든 컨테이너 정리
   await cleanupAllContainers();

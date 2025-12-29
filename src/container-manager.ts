@@ -8,6 +8,7 @@ import type {
   ContainerStatusResult,
   DestroyContainerResult,
 } from './types.js';
+import { cleanupContainerFiles } from './file-manager.js';
 
 const execAsync = promisify(exec);
 
@@ -246,6 +247,9 @@ export async function destroyContainer(containerId: string): Promise<DestroyCont
       clearTimeout(timer);
       containerTimers.delete(containerId);
     }
+    
+    // 컨테이너 관련 파일 정리
+    await cleanupContainerFiles(containerId);
     
     // 컨테이너 강제 종료 및 삭제
     await execAsync(`podman rm -f ${containerId}`, { timeout: 30000 });

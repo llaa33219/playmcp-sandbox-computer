@@ -10,48 +10,68 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-// MCP 서버 인스턴스 생성
-const mcpServer = new McpServer(
-  {
-    name: 'container-sandbox-mcp',
-    version: '1.0.0',
-  },
-  {
-    capabilities: {
-      tools: {},
+// 세션 정보 인터페이스
+interface SessionInfo {
+  server: McpServer;
+  transport: StreamableHTTPServerTransport;
+}
+
+// 세션별 서버 및 트랜스포트 저장소
+const sessions: Map<string, SessionInfo> = new Map();
+
+/**
+ * 새로운 MCP 서버 인스턴스를 생성하고 도구를 등록합니다.
+ */
+function createMcpServer(): McpServer {
+  const server = new McpServer(
+    {
+      name: 'container-sandbox-mcp',
+      version: '1.0.0',
     },
-  }
-);
-
-// 도구 등록
-registerTools(mcpServer);
-
-// 세션별 트랜스포트 저장소
-const transports: Map<string, StreamableHTTPServerTransport> = new Map();
+    {
+      capabilities: {
+        tools: {},
+      },
+    }
+  );
+  
+  // 도구 등록
+  registerTools(server);
+  
+  return server;
+}
 
 // MCP 엔드포인트 (POST) - 루트 경로
 app.post('/', async (req, res) => {
   try {
     const isInitRequest = req.body?.method === 'initialize';
-    let transport: StreamableHTTPServerTransport;
+    let sessionInfo: SessionInfo;
 
     if (isInitRequest) {
       // 새 세션 생성
       const sessionId = randomUUID();
-      transport = new StreamableHTTPServerTransport({
+      
+      // 새로운 MCP 서버 인스턴스 생성
+      const server = createMcpServer();
+      
+      // 새로운 트랜스포트 생성
+      const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => sessionId,
       });
-      transports.set(sessionId, transport);
       
-      // 서버 연결
-      await mcpServer.connect(transport);
+      // 서버와 트랜스포트 연결
+      await server.connect(transport);
+      
+      // 세션 정보 저장
+      sessionInfo = { server, transport };
+      sessions.set(sessionId, sessionInfo);
       
       console.log(`[MCP] 새 세션 생성: ${sessionId}`);
     } else {
       // 기존 세션 찾기
       const sessionId = req.headers['mcp-session-id'] as string;
       
-      if (!sessionId || !transports.has(sessionId)) {
+      if (!sessionId || !sessions.has(sessionId)) {
         res.status(400).json({
           jsonrpc: '2.0',
           error: { code: -32000, message: '유효하지 않거나 누락된 세션 ID입니다.' },
@@ -60,18 +80,18 @@ app.post('/', async (req, res) => {
         return;
       }
       
-      transport = transports.get(sessionId)!;
+      sessionInfo = sessions.get(sessionId)!;
     }
 
     // 요청 처리
-    await transport.handleRequest(req, res, req.body);
+    await sessionInfo.transport.handleRequest(req, res, req.body);
 
     // 연결 종료 시 정리
     res.on('close', () => {
       // 세션 ID는 헤더에서 가져옴
       const closedSessionId = req.headers['mcp-session-id'] as string;
-      if (closedSessionId && transports.has(closedSessionId)) {
-        transports.delete(closedSessionId);
+      if (closedSessionId && sessions.has(closedSessionId)) {
+        sessions.delete(closedSessionId);
         console.log(`[MCP] 세션 종료: ${closedSessionId}`);
       }
     });
@@ -111,16 +131,16 @@ const gracefulShutdown = async (signal: string) => {
   // 모든 컨테이너 정리
   await cleanupAllContainers();
   
-  // 모든 트랜스포트 종료
-  for (const [sessionId, transport] of transports) {
+  // 모든 세션 종료
+  for (const [sessionId, sessionInfo] of sessions) {
     try {
-      await transport.close();
-      console.log(`[MCP] 트랜스포트 종료: ${sessionId}`);
+      await sessionInfo.transport.close();
+      console.log(`[MCP] 세션 종료: ${sessionId}`);
     } catch (error) {
-      console.error(`[MCP] 트랜스포트 종료 오류: ${sessionId}`, error);
+      console.error(`[MCP] 세션 종료 오류: ${sessionId}`, error);
     }
   }
-  transports.clear();
+  sessions.clear();
   
   // HTTP 서버 종료
   server.close(() => {

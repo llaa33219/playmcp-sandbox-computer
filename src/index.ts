@@ -3,7 +3,6 @@ import { randomUUID } from 'crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { registerTools } from './tools.js';
-import { registerPrompts } from './prompts.js';
 import { cleanupAllContainers } from './container-manager.js';
 
 const app = express();
@@ -20,14 +19,12 @@ const mcpServer = new McpServer(
   {
     capabilities: {
       tools: {},
-      prompts: {},
     },
   }
 );
 
-// 도구 및 프롬프트 등록
+// 도구 등록
 registerTools(mcpServer);
-registerPrompts(mcpServer);
 
 // 세션별 트랜스포트 저장소
 const transports: Map<string, StreamableHTTPServerTransport> = new Map();

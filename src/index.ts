@@ -41,59 +41,97 @@ function createMcpServer(): McpServer {
   return server;
 }
 
-// MCP 엔드포인트 (POST) - 루트 경로
-app.post('/', async (req, res) => {
+// MCP 엔드포인트 - 모든 HTTP 메서드 처리 (GET, POST, DELETE)
+app.all('/', async (req, res) => {
+  const sessionId = req.headers['mcp-session-id'] as string;
+  
   try {
-    const isInitRequest = req.body?.method === 'initialize';
-    let sessionInfo: SessionInfo;
-
-    if (isInitRequest) {
-      // 새 세션 생성
-      const sessionId = randomUUID();
-      
-      // 새로운 MCP 서버 인스턴스 생성
-      const server = createMcpServer();
-      
-      // 새로운 트랜스포트 생성
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => sessionId,
-      });
-      
-      // 서버와 트랜스포트 연결
-      await server.connect(transport);
-      
-      // 세션 정보 저장
-      sessionInfo = { server, transport };
-      sessions.set(sessionId, sessionInfo);
-      
-      console.log(`[MCP] 새 세션 생성: ${sessionId}`);
-    } else {
-      // 기존 세션 찾기
-      const sessionId = req.headers['mcp-session-id'] as string;
-      
-      if (!sessionId || !sessions.has(sessionId)) {
-        res.status(400).json({
+    // GET: SSE 스트리밍 또는 서버 정보
+    if (req.method === 'GET') {
+      if (sessionId && sessions.has(sessionId)) {
+        // 기존 세션의 SSE 스트림 처리
+        const sessionInfo = sessions.get(sessionId)!;
+        await sessionInfo.transport.handleRequest(req, res);
+      } else {
+        // 세션 없이 GET 요청 시 서버 정보 반환
+        res.json({
+          name: 'container-sandbox-mcp',
+          version: '1.0.0',
+          description: 'MCP 컨테이너 샌드박스 서버',
+          status: 'running',
+          activeSessions: sessions.size,
+        });
+      }
+      return;
+    }
+    
+    // DELETE: 세션 종료
+    if (req.method === 'DELETE') {
+      if (sessionId && sessions.has(sessionId)) {
+        const sessionInfo = sessions.get(sessionId)!;
+        await sessionInfo.transport.close();
+        sessions.delete(sessionId);
+        console.log(`[MCP] 세션 삭제: ${sessionId}`);
+        res.status(200).json({ message: '세션이 종료되었습니다.' });
+      } else {
+        res.status(404).json({
           jsonrpc: '2.0',
-          error: { code: -32000, message: '유효하지 않거나 누락된 세션 ID입니다.' },
+          error: { code: -32000, message: '세션을 찾을 수 없습니다.' },
           id: null,
         });
-        return;
       }
-      
-      sessionInfo = sessions.get(sessionId)!;
+      return;
     }
+    
+    // POST: MCP JSON-RPC 메시지 처리
+    if (req.method === 'POST') {
+      const isInitRequest = req.body?.method === 'initialize';
+      let sessionInfo: SessionInfo;
 
-    // 요청 처리
-    await sessionInfo.transport.handleRequest(req, res, req.body);
-
-    // 연결 종료 시 정리
-    res.on('close', () => {
-      // 세션 ID는 헤더에서 가져옴
-      const closedSessionId = req.headers['mcp-session-id'] as string;
-      if (closedSessionId && sessions.has(closedSessionId)) {
-        sessions.delete(closedSessionId);
-        console.log(`[MCP] 세션 종료: ${closedSessionId}`);
+      if (isInitRequest) {
+        // 새 세션 생성
+        const newSessionId = randomUUID();
+        
+        // 새로운 MCP 서버 인스턴스 생성
+        const server = createMcpServer();
+        
+        // 새로운 트랜스포트 생성
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => newSessionId,
+        });
+        
+        // 서버와 트랜스포트 연결
+        await server.connect(transport);
+        
+        // 세션 정보 저장
+        sessionInfo = { server, transport };
+        sessions.set(newSessionId, sessionInfo);
+        
+        console.log(`[MCP] 새 세션 생성: ${newSessionId}`);
+      } else {
+        // 기존 세션 찾기
+        if (!sessionId || !sessions.has(sessionId)) {
+          res.status(400).json({
+            jsonrpc: '2.0',
+            error: { code: -32000, message: '유효하지 않거나 누락된 세션 ID입니다.' },
+            id: null,
+          });
+          return;
+        }
+        
+        sessionInfo = sessions.get(sessionId)!;
       }
+
+      // 요청 처리
+      await sessionInfo.transport.handleRequest(req, res, req.body);
+      return;
+    }
+    
+    // 지원하지 않는 메서드
+    res.status(405).json({
+      jsonrpc: '2.0',
+      error: { code: -32000, message: `지원하지 않는 HTTP 메서드: ${req.method}` },
+      id: null,
     });
   } catch (error) {
     console.error('[MCP] 요청 처리 오류:', error);

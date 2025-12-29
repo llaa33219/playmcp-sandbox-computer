@@ -1,17 +1,14 @@
-# Node.js 베이스 이미지 사용 (Fedora 기반)
-FROM fedora:41
+# Podman이 포함된 Fedora 베이스 이미지
+FROM quay.io/podman/stable:latest
 
-# Node.js와 Podman 설치
-RUN dnf update -y && \
-    dnf install -y nodejs npm podman fuse-overlayfs --setopt=install_weak_deps=False && \
+# dnf 캐시 정리 및 zchunk 비활성화 (체크섬 오류 방지)
+RUN dnf clean all && \
+    rm -rf /var/cache/dnf && \
+    echo "zchunk=False" >> /etc/dnf/dnf.conf
+
+# Node.js 설치
+RUN dnf install -y nodejs npm --setopt=install_weak_deps=False && \
     dnf clean all
-
-# Podman rootless 설정
-RUN mkdir -p /etc/containers && \
-    echo '[storage]' > /etc/containers/storage.conf && \
-    echo 'driver = "overlay"' >> /etc/containers/storage.conf && \
-    echo '[storage.options.overlay]' >> /etc/containers/storage.conf && \
-    echo 'mount_program = "/usr/bin/fuse-overlayfs"' >> /etc/containers/storage.conf
 
 # 작업 디렉토리 설정
 WORKDIR /app

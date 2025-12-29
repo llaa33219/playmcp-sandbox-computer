@@ -29,8 +29,8 @@ registerTools(mcpServer);
 // 세션별 트랜스포트 저장소
 const transports: Map<string, StreamableHTTPServerTransport> = new Map();
 
-// MCP 엔드포인트 (POST)
-app.post('/mcp', async (req, res) => {
+// MCP 엔드포인트 (POST) - 루트 경로
+app.post('/', async (req, res) => {
   try {
     const isInitRequest = req.body?.method === 'initialize';
     let transport: StreamableHTTPServerTransport;
@@ -100,7 +100,7 @@ app.get('/health', (_req, res) => {
 // 서버 시작
 const server = app.listen(PORT, () => {
   console.log(`[Server] MCP 컨테이너 샌드박스 서버가 포트 ${PORT}에서 실행 중입니다.`);
-  console.log(`[Server] MCP 엔드포인트: http://localhost:${PORT}/mcp`);
+  console.log(`[Server] MCP 엔드포인트: http://localhost:${PORT}/`);
   console.log(`[Server] 헬스체크: http://localhost:${PORT}/health`);
 });
 

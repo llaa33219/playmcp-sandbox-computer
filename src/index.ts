@@ -38,7 +38,9 @@ app.post('/mcp', async (req, res) => {
     if (isInitRequest) {
       // 새 세션 생성
       const sessionId = randomUUID();
-      transport = new StreamableHTTPServerTransport({ sessionId });
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => sessionId,
+      });
       transports.set(sessionId, transport);
       
       // 서버 연결
@@ -66,10 +68,11 @@ app.post('/mcp', async (req, res) => {
 
     // 연결 종료 시 정리
     res.on('close', () => {
-      const sessionId = (transport as StreamableHTTPServerTransport & { sessionId?: string }).sessionId;
-      if (sessionId) {
-        transports.delete(sessionId);
-        console.log(`[MCP] 세션 종료: ${sessionId}`);
+      // 세션 ID는 헤더에서 가져옴
+      const closedSessionId = req.headers['mcp-session-id'] as string;
+      if (closedSessionId && transports.has(closedSessionId)) {
+        transports.delete(closedSessionId);
+        console.log(`[MCP] 세션 종료: ${closedSessionId}`);
       }
     });
   } catch (error) {

@@ -10,6 +10,12 @@ RUN dnf clean all && \
 RUN dnf install -y nodejs npm --setopt=install_weak_deps=False && \
     dnf clean all
 
+# Podman 스토리지 설정 (VFS 드라이버 사용 - Railway 환경 권한 문제 해결)
+# VFS는 overlay보다 느리지만 권한 문제가 없음
+RUN mkdir -p /etc/containers && \
+    echo '[storage]' > /etc/containers/storage.conf && \
+    echo 'driver = "vfs"' >> /etc/containers/storage.conf
+
 # 작업 디렉토리 설정
 WORKDIR /app
 

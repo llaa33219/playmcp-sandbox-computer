@@ -73,15 +73,10 @@ jobs:
             
             # 의존성 설치 및 빌드
             echo "📦 의존성 설치 중..."
-            # package-lock.json이 없으면 생성 후 커밋
+            # package-lock.json이 없으면 생성
             if [ ! -f "package-lock.json" ]; then
               echo "📝 package-lock.json 생성 중..."
               npm install --package-lock-only
-              git config user.email "github-actions@github.com"
-              git config user.name "GitHub Actions"
-              git add package-lock.json
-              git commit -m "chore: add package-lock.json [skip ci]" || true
-              git push origin main || true
             fi
             npm install
             
@@ -91,8 +86,45 @@ jobs:
             # 프로덕션 의존성만 유지
             npm prune --omit=dev
             
-            # 서비스 재시작
+            # 서비스 재시작 (서비스가 없으면 설치)
             echo "🔄 서비스 재시작 중..."
+            if ! systemctl is-enabled $SERVICE_NAME &>/dev/null; then
+              echo "🛠️ systemd 서비스 설치 중..."
+              
+              # 환경변수 파일 생성
+              cat > "$APP_DIR/.env" << 'ENVFILE'
+PORT=3000
+BASE_URL=https://playmcp-sandbox-computer.bloupla.net
+NODE_ENV=production
+ENVFILE
+              chmod 600 "$APP_DIR/.env"
+              
+              # systemd 서비스 파일 생성
+              cat > /etc/systemd/system/${SERVICE_NAME}.service << 'SERVICEFILE'
+[Unit]
+Description=MCP Container Sandbox Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mcp-container-server
+EnvironmentFile=/opt/mcp-container-server/.env
+ExecStart=/usr/bin/node /opt/mcp-container-server/dist/index.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mcp-container
+
+[Install]
+WantedBy=multi-user.target
+SERVICEFILE
+              
+              systemctl daemon-reload
+              systemctl enable $SERVICE_NAME
+            fi
+            
             systemctl restart $SERVICE_NAME
             
             # 헬스체크 대기

@@ -123,6 +123,28 @@ jobs:
             
             systemctl restart $SERVICE_NAME
             
+            # Podman 설치 및 설정 (아직 안 되어 있으면)
+            if ! command -v podman &>/dev/null; then
+              echo "📦 Podman 설치 중..."
+              apt-get update -qq
+              apt-get install -y -qq podman
+            fi
+            
+            # Podman 스토리지 설정 (runroot 오류 해결)
+            echo "🗃️ Podman 스토리지 설정 중..."
+            mkdir -p /etc/containers
+            mkdir -p /var/lib/containers/storage
+            mkdir -p /run/containers/storage
+            
+            echo "[storage]" > /etc/containers/storage.conf
+            echo 'driver = "vfs"' >> /etc/containers/storage.conf
+            echo 'graphroot = "/var/lib/containers/storage"' >> /etc/containers/storage.conf
+            echo 'runroot = "/run/containers/storage"' >> /etc/containers/storage.conf
+            
+            # Alpine 이미지 미리 다운로드 (최초 컨테이너 생성 속도 향상)
+            echo "📥 Alpine 이미지 다운로드 중..."
+            podman pull docker.io/library/alpine:latest 2>/dev/null || true
+            
             # Nginx + HTTPS 설정 (아직 안 되어 있으면)
             DOMAIN="playmcp-sandbox-computer.bloupla.net"
             if ! command -v nginx &>/dev/null; then

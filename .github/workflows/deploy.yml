@@ -123,15 +123,22 @@ jobs:
             
             systemctl restart $SERVICE_NAME
             
-            # Podman 설치 및 설정 (아직 안 되어 있으면)
+            # Podman 설치 및 설정
             if ! command -v podman &>/dev/null; then
               echo "📦 Podman 설치 중..."
               apt-get update -qq
               apt-get install -y -qq podman
             fi
             
-            # Podman 스토리지 설정 (runroot 오류 해결)
+            # Podman 스토리지 설정 (graph driver mismatch 오류 해결)
             echo "🗃️ Podman 스토리지 설정 중..."
+            
+            # 기존 스토리지 완전 삭제 (드라이버 불일치 해결)
+            podman system reset --force 2>/dev/null || true
+            rm -rf /var/lib/containers/storage/* 2>/dev/null || true
+            rm -rf /run/containers/storage/* 2>/dev/null || true
+            rm -rf ~/.local/share/containers 2>/dev/null || true
+            
             mkdir -p /etc/containers
             mkdir -p /var/lib/containers/storage
             mkdir -p /run/containers/storage
@@ -143,7 +150,7 @@ jobs:
             
             # Alpine 이미지 미리 다운로드 (최초 컨테이너 생성 속도 향상)
             echo "📥 Alpine 이미지 다운로드 중..."
-            podman pull docker.io/library/alpine:latest 2>/dev/null || true
+            podman pull docker.io/library/alpine:latest || echo "⚠️ Alpine 이미지 다운로드 실패 - 에러 확인 필요"
             
             # Nginx + HTTPS 설정 (아직 안 되어 있으면)
             DOMAIN="playmcp-sandbox-computer.bloupla.net"

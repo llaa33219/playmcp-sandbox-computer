@@ -19,9 +19,9 @@ const execAsync = promisify(exec);
 const CONTAINER_TTL_MS = 2 * 60 * 60 * 1000;
 
 /**
- * 명령어 실행 타임아웃 (3초) - 초과 시 비동기 모드로 전환
+ * 명령어 실행 타임아웃 (30초) - 초과 시 비동기 모드로 전환
  */
-const COMMAND_TIMEOUT_MS = 3000;
+const COMMAND_TIMEOUT_MS = 30000;
 
 /**
  * 기본 이미지 (가벼운 Alpine Linux)
@@ -367,7 +367,7 @@ export async function executeCommand(
 
 사용자에게 다음과 같이 안내하세요.
 "현재 작업은 실행 시간이 오래 걸려 비동기 모드로 전환되었습니다.
-일정 시간 기다린 후 **결과를 확인해 달라고 요청하라**고 알려주세요."
+사용자에게 일정 시간 기다린 후 **결과를 확인해 달라고 요청하라**고 알려주세요."
 
 사용자가 결과를 확인해 달라고 말하였다면, check_command_status 도구를 사용하여 명령어의 실행 상태를 확인하세요.`,
           isAsync: true,

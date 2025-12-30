@@ -71,3 +71,17 @@ export interface GetFileUrlResult {
   size?: number;
   message: string;
 }
+
+/**
+ * 비동기 명령어 상태 확인 결과 타입
+ */
+export interface AsyncCommandStatusResult {
+  success: boolean;
+  hasAsyncCommand: boolean;
+  isRunning: boolean;
+  command?: string;
+  startedAt?: Date;
+  output?: string;
+  exitCode?: number;
+  message: string;
+}

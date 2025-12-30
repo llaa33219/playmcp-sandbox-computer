@@ -1,4 +1,4 @@
-import { exec, spawn } from 'child_process';
+import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { v4 as uuidv4 } from 'uuid';
 import type {
@@ -7,6 +7,7 @@ import type {
   CreateContainerResult,
   ContainerStatusResult,
   DestroyContainerResult,
+  AsyncCommandStatusResult,
 } from './types.js';
 import { cleanupContainerFiles } from './file-manager.js';
 
@@ -40,6 +41,23 @@ const CONTAINER_LIMITS = {
  * 활성 컨테이너 저장소
  */
 const activeContainers: Map<string, ContainerInfo> = new Map();
+
+/**
+ * 비동기 명령어 정보 타입
+ */
+interface AsyncProcessInfo {
+  process: ChildProcess;
+  command: string;
+  startedAt: Date;
+  output: string;
+  exitCode: number | null;
+  isRunning: boolean;
+}
+
+/**
+ * 컨테이너별 마지막 비동기 명령어 저장소
+ */
+const runningAsyncProcesses: Map<string, AsyncProcessInfo> = new Map();
 
 /**
  * 명령어와 패키지 이름이 다른 경우의 매핑 테이블
@@ -269,41 +287,36 @@ export async function executeCommand(
     let output = '';
     let isResolved = false;
     
-    // 타임아웃 타이머 설정
-    const timeoutTimer = setTimeout(() => {
-      if (!isResolved) {
-        isResolved = true;
-        resolve({
-          success: true,
-          output: `⏳ 명령어가 백그라운드에서 실행 중입니다.
-
-이 명령어는 시간이 오래 걸리는 작업이라 비동기 모드로 전환되었습니다.
-
-사용자에게 다음과 같이 안내하세요.
-"현재 작업은 실행 시간이 오래 걸려 비동기 모드로 전환되었습니다.
-일정 시간 기다린 후 **결과를 확인해 달라**고 알려주세요."
-
-사용자가 결과를 확인해 달라고 말하였다면, execute_command을 사용하여 결과를 확인해 보세요.`,
-          isAsync: true,
-        });
-      }
-    }, COMMAND_TIMEOUT_MS);
-    
     // Podman exec 실행
     const child = spawn('podman', ['exec', containerId, 'sh', '-c', command], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     
+    // 비동기 프로세스 정보 초기화
+    const asyncInfo: AsyncProcessInfo = {
+      process: child,
+      command,
+      startedAt: new Date(),
+      output: '',
+      exitCode: null,
+      isRunning: true,
+    };
+    
     child.stdout.on('data', (data: Buffer) => {
-      output += data.toString();
+      const text = data.toString();
+      output += text;
+      asyncInfo.output += text;
     });
     
     child.stderr.on('data', (data: Buffer) => {
-      output += data.toString();
+      const text = data.toString();
+      output += text;
+      asyncInfo.output += text;
     });
     
     child.on('close', (exitCode) => {
-      clearTimeout(timeoutTimer);
+      asyncInfo.isRunning = false;
+      asyncInfo.exitCode = exitCode;
       
       if (!isResolved) {
         isResolved = true;
@@ -326,7 +339,7 @@ export async function executeCommand(
     });
     
     child.on('error', (error) => {
-      clearTimeout(timeoutTimer);
+      asyncInfo.isRunning = false;
       
       if (!isResolved) {
         isResolved = true;
@@ -337,7 +350,80 @@ export async function executeCommand(
         });
       }
     });
+    
+    // 타임아웃 타이머 설정
+    setTimeout(() => {
+      if (!isResolved) {
+        isResolved = true;
+        
+        // 비동기 프로세스로 저장 (타임아웃 시에만)
+        runningAsyncProcesses.set(containerId, asyncInfo);
+        
+        resolve({
+          success: true,
+          output: `⏳ 명령어가 백그라운드에서 실행 중입니다.
+
+이 명령어는 시간이 오래 걸리는 작업이라 비동기 모드로 전환되었습니다.
+
+사용자에게 다음과 같이 안내하세요.
+"현재 작업은 실행 시간이 오래 걸려 비동기 모드로 전환되었습니다.
+일정 시간 기다린 후 **결과를 확인해 달라**고 알려주세요."
+
+사용자가 결과를 확인해 달라고 말하였다면, check_command_status 도구를 사용하여 명령어의 실행 상태를 확인하세요.`,
+          isAsync: true,
+        });
+      }
+    }, COMMAND_TIMEOUT_MS);
   });
+}
+
+/**
+ * 비동기 명령어 상태 확인
+ * - 마지막으로 실행한 비동기 명령어가 아직 실행 중인지 확인
+ */
+export function checkAsyncCommandStatus(containerId: string): AsyncCommandStatusResult {
+  const asyncInfo = runningAsyncProcesses.get(containerId);
+  
+  if (!asyncInfo) {
+    return {
+      success: true,
+      hasAsyncCommand: false,
+      isRunning: false,
+      message: `컨테이너 ${containerId}에서 추적 중인 비동기 명령어가 없습니다.`,
+    };
+  }
+  
+  if (asyncInfo.isRunning) {
+    const elapsedMs = Date.now() - asyncInfo.startedAt.getTime();
+    const elapsedSec = Math.floor(elapsedMs / 1000);
+    
+    return {
+      success: true,
+      hasAsyncCommand: true,
+      isRunning: true,
+      command: asyncInfo.command,
+      startedAt: asyncInfo.startedAt,
+      output: asyncInfo.output || '(아직 출력 없음)',
+      message: `명령어가 아직 실행 중입니다. (경과 시간: ${elapsedSec}초)\n명령어: ${asyncInfo.command}\n\n현재까지의 출력:\n${asyncInfo.output || '(아직 출력 없음)'}`,
+    };
+  }
+  
+  // 명령어가 완료된 경우
+  const result: AsyncCommandStatusResult = {
+    success: true,
+    hasAsyncCommand: true,
+    isRunning: false,
+    command: asyncInfo.command,
+    startedAt: asyncInfo.startedAt,
+    output: asyncInfo.output || '(출력 없음)',
+    exitCode: asyncInfo.exitCode ?? undefined,
+    message: `명령어가 완료되었습니다. (종료 코드: ${asyncInfo.exitCode})\n명령어: ${asyncInfo.command}\n\n출력 결과:\n${asyncInfo.output || '(출력 없음)'}`,
+  };
+  
+  // 완료된 명령어 정보 제거
+  runningAsyncProcesses.delete(containerId);
+  
+  return result;
 }
 
 /**
@@ -351,6 +437,13 @@ export async function destroyContainer(containerId: string): Promise<DestroyCont
       clearTimeout(timer);
       containerTimers.delete(containerId);
     }
+    
+    // 비동기 프로세스 정리
+    const asyncInfo = runningAsyncProcesses.get(containerId);
+    if (asyncInfo && asyncInfo.isRunning) {
+      asyncInfo.process.kill();
+    }
+    runningAsyncProcesses.delete(containerId);
     
     // 컨테이너 관련 파일 정리
     await cleanupContainerFiles(containerId);
@@ -395,6 +488,15 @@ export async function destroyContainer(containerId: string): Promise<DestroyCont
  */
 export async function cleanupAllContainers(): Promise<void> {
   console.log('[Container] 모든 컨테이너 정리 중...');
+  
+  // 모든 비동기 프로세스 정리
+  for (const [containerId, asyncInfo] of runningAsyncProcesses) {
+    if (asyncInfo.isRunning) {
+      asyncInfo.process.kill();
+      console.log(`[Container] 비동기 프로세스 종료: ${containerId}`);
+    }
+  }
+  runningAsyncProcesses.clear();
   
   const containerIds = Array.from(activeContainers.keys());
   

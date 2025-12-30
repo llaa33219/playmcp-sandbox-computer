@@ -483,6 +483,29 @@ function generatePreviewPage(fileInfo: FileInfo, previewType: PreviewType, fileI
   
   const fileIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>`;
   
+  // JavaScript로 강제 다운로드 처리
+  const downloadScript = `
+    <script>
+      function forceDownload(url, filename) {
+        fetch(url)
+          .then(response => response.blob())
+          .then(blob => {
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(link.href);
+          })
+          .catch(err => {
+            console.error('다운로드 오류:', err);
+            alert('파일 다운로드 중 오류가 발생했습니다.');
+          });
+      }
+    </script>
+  `;
+  
   // 미리보기 불가능한 파일
   if (previewType === 'none') {
     return `<!DOCTYPE html>
@@ -498,11 +521,12 @@ function generatePreviewPage(fileInfo: FileInfo, previewType: PreviewType, fileI
     <div class="file-icon">${fileIcon}</div>
     <div class="file-name">${escapedFileName}</div>
     <div class="file-meta">${fileSize} · ${escapeHtml(fileInfo.mimeType)}</div>
-    <a href="${downloadUrl}" class="download-btn">
+    <button onclick="forceDownload('${rawUrl}', '${escapedFileName}')" class="download-btn">
       ${downloadIcon}
       다운로드
-    </a>
+    </button>
   </div>
+  ${downloadScript}
 </body>
 </html>`;
   }
@@ -582,10 +606,10 @@ function generatePreviewPage(fileInfo: FileInfo, previewType: PreviewType, fileI
         <div class="file-name">${escapedFileName}</div>
         <div class="file-meta">${fileSize} · ${escapeHtml(fileInfo.mimeType)}</div>
       </div>
-      <a href="${downloadUrl}" class="download-btn">
+      <button onclick="forceDownload('${rawUrl}', '${escapedFileName}')" class="download-btn">
         ${downloadIcon}
         다운로드
-      </a>
+      </button>
     </div>
     <div class="preview-container">
       <div class="preview-title">미리보기</div>
@@ -594,6 +618,7 @@ function generatePreviewPage(fileInfo: FileInfo, previewType: PreviewType, fileI
       </div>
     </div>
   </div>
+  ${downloadScript}
 </body>
 </html>`;
 }

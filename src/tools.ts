@@ -16,7 +16,7 @@ export function registerTools(server: McpServer): void {
   // 1. 컨테이너 생성 도구
   server.tool(
     'create_container',
-    '새로운 리눅스 컨테이너를 생성합니다. 사용자가 "컴퓨터 사용", "터미널 사용", "CLI 사용", "CMD 사용", "명령어 실행", "코드 실행" 등을 요청하면 먼저 이 도구를 호출하세요. 가벼운 Alpine Linux 기반의 샌드박스 환경이 제공되며, 인터넷 연결이 가능합니다. 생성된 컨테이너는 2시간 후 자동으로 파괴됩니다.',
+    '새로운 리눅스 컨테이너를 생성합니다. 사용자가 "컴퓨터 사용", "터미널 사용", "CLI 사용", "CMD 사용", "명령어 실행" 등을 요청하면 먼저 이 도구를 호출하세요. 가벼운 Alpine Linux 기반의 샌드박스 환경이 제공되며, 인터넷 연결이 가능합니다. 생성된 컨테이너는 2시간 후 자동으로 파괴됩니다.',
     {},
     async () => {
       const result = await createContainer();

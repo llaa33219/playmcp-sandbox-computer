@@ -123,6 +123,52 @@ jobs:
             
             systemctl restart $SERVICE_NAME
             
+            # Nginx + HTTPS 설정 (아직 안 되어 있으면)
+            DOMAIN="playmcp-sandbox-computer.bloupla.net"
+            if ! command -v nginx &>/dev/null; then
+              echo "🔐 Nginx + HTTPS 설치 중..."
+              
+              # Nginx 및 Certbot 설치
+              apt-get update -qq
+              apt-get install -y -qq nginx certbot python3-certbot-nginx
+              
+              # Nginx 설정 파일 생성
+              echo "server {" > /etc/nginx/sites-available/mcp-container
+              echo "    listen 80;" >> /etc/nginx/sites-available/mcp-container
+              echo "    server_name $DOMAIN;" >> /etc/nginx/sites-available/mcp-container
+              echo "    location / {" >> /etc/nginx/sites-available/mcp-container
+              echo "        proxy_pass http://127.0.0.1:3000;" >> /etc/nginx/sites-available/mcp-container
+              echo "        proxy_http_version 1.1;" >> /etc/nginx/sites-available/mcp-container
+              echo "        proxy_set_header Upgrade \$http_upgrade;" >> /etc/nginx/sites-available/mcp-container
+              echo "        proxy_set_header Connection 'upgrade';" >> /etc/nginx/sites-available/mcp-container
+              echo "        proxy_set_header Host \$host;" >> /etc/nginx/sites-available/mcp-container
+              echo "        proxy_set_header X-Real-IP \$remote_addr;" >> /etc/nginx/sites-available/mcp-container
+              echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> /etc/nginx/sites-available/mcp-container
+              echo "        proxy_set_header X-Forwarded-Proto \$scheme;" >> /etc/nginx/sites-available/mcp-container
+              echo "        proxy_read_timeout 86400;" >> /etc/nginx/sites-available/mcp-container
+              echo "        proxy_send_timeout 86400;" >> /etc/nginx/sites-available/mcp-container
+              echo "        proxy_buffering off;" >> /etc/nginx/sites-available/mcp-container
+              echo "    }" >> /etc/nginx/sites-available/mcp-container
+              echo "}" >> /etc/nginx/sites-available/mcp-container
+              
+              # 사이트 활성화
+              ln -sf /etc/nginx/sites-available/mcp-container /etc/nginx/sites-enabled/
+              rm -f /etc/nginx/sites-enabled/default
+              
+              # Nginx 시작
+              systemctl enable nginx
+              systemctl restart nginx
+              
+              # SSL 인증서 발급 (Let's Encrypt)
+              echo "📜 SSL 인증서 발급 중..."
+              certbot --nginx -d $DOMAIN --non-interactive --agree-tos --email admin@$DOMAIN --redirect || echo "⚠️ SSL 발급 실패 - 나중에 수동으로 실행하세요"
+              
+              # 방화벽 설정
+              ufw allow 'Nginx Full' 2>/dev/null || true
+              
+              echo "✅ Nginx + HTTPS 설정 완료!"
+            fi
+            
             # 헬스체크 대기
             echo "⏳ 서버 시작 대기 중..."
             sleep 3

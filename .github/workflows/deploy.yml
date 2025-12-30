@@ -73,7 +73,17 @@ jobs:
             
             # 의존성 설치 및 빌드
             echo "📦 의존성 설치 중..."
-            npm ci
+            # package-lock.json이 없으면 생성 후 커밋
+            if [ ! -f "package-lock.json" ]; then
+              echo "📝 package-lock.json 생성 중..."
+              npm install --package-lock-only
+              git config user.email "github-actions@github.com"
+              git config user.name "GitHub Actions"
+              git add package-lock.json
+              git commit -m "chore: add package-lock.json [skip ci]" || true
+              git push origin main || true
+            fi
+            npm install
             
             echo "🔨 빌드 중..."
             npm run build

@@ -1,0 +1,168 @@
+# MCP Container Sandbox Server - 자동 배포 워크플로우
+#
+# 이 워크플로우는 main 브랜치에 푸시될 때 자동으로 Hostinger VPS에 배포합니다.
+#
+# 필요한 GitHub Secrets:
+#   - VPS_HOST: VPS IP 주소 또는 도메인 (예: playmcp-sandbox-computer.bloupla.net)
+#   - VPS_USER: SSH 사용자명 (보통 root)
+#   - VPS_SSH_KEY: SSH 개인키 (id_rsa 또는 id_ed25519 내용)
+#   - VPS_PORT: SSH 포트 (선택사항, 기본값 22)
+#
+# Secrets 설정 방법:
+#   1. GitHub 저장소 → Settings → Secrets and variables → Actions
+#   2. "New repository secret" 클릭
+#   3. 위 Secrets들을 하나씩 추가
+
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # 수동 실행 허용
+
+env:
+  APP_DIR: /opt/mcp-container-server
+  SERVICE_NAME: mcp-container
+
+jobs:
+  deploy:
+    name: Deploy to Hostinger VPS
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ secrets.VPS_PORT || 22 }} -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Deploy to VPS
+        env:
+          SSH_HOST: ${{ secrets.VPS_HOST }}
+          SSH_USER: ${{ secrets.VPS_USER }}
+          SSH_PORT: ${{ secrets.VPS_PORT || 22 }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p $SSH_PORT $SSH_USER@$SSH_HOST << 'DEPLOY_SCRIPT'
+            set -e
+            
+            echo "========================================="
+            echo "🚀 MCP Container Server 배포 시작"
+            echo "========================================="
+            
+            APP_DIR="/opt/mcp-container-server"
+            SERVICE_NAME="mcp-container"
+            BACKUP_DIR="${APP_DIR}-backup-$(date +%Y%m%d%H%M%S)"
+            
+            # 백업 생성
+            if [ -d "$APP_DIR" ]; then
+              echo "📦 기존 버전 백업 중..."
+              cp -r "$APP_DIR" "$BACKUP_DIR"
+            fi
+            
+            cd "$APP_DIR"
+            
+            # Git pull
+            echo "📥 최신 코드 가져오기..."
+            git fetch origin main
+            git reset --hard origin/main
+            
+            # 의존성 설치 및 빌드
+            echo "📦 의존성 설치 중..."
+            npm ci
+            
+            echo "🔨 빌드 중..."
+            npm run build
+            
+            # 프로덕션 의존성만 유지
+            npm prune --omit=dev
+            
+            # 서비스 재시작
+            echo "🔄 서비스 재시작 중..."
+            systemctl restart $SERVICE_NAME
+            
+            # 헬스체크 대기
+            echo "⏳ 서버 시작 대기 중..."
+            sleep 3
+            
+            # 헬스체크 검증
+            MAX_ATTEMPTS=10
+            ATTEMPT=1
+            while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+              if curl -s http://localhost:3000/health | grep -q '"status":"ok"'; then
+                echo "✅ 헬스체크 통과!"
+                break
+              fi
+              echo "대기 중... ($ATTEMPT/$MAX_ATTEMPTS)"
+              sleep 2
+              ATTEMPT=$((ATTEMPT + 1))
+            done
+            
+            if [ $ATTEMPT -gt $MAX_ATTEMPTS ]; then
+              echo "❌ 헬스체크 실패! 롤백 중..."
+              if [ -d "$BACKUP_DIR" ]; then
+                rm -rf "$APP_DIR"
+                mv "$BACKUP_DIR" "$APP_DIR"
+                systemctl restart $SERVICE_NAME
+              fi
+              exit 1
+            fi
+            
+            # 백업 정리 (성공 시 최근 3개만 유지)
+            echo "🧹 오래된 백업 정리 중..."
+            ls -dt /opt/mcp-container-server-backup-* 2>/dev/null | tail -n +4 | xargs rm -rf 2>/dev/null || true
+            
+            echo "========================================="
+            echo "✅ 배포 완료!"
+            echo "========================================="
+          DEPLOY_SCRIPT
+
+      - name: Verify deployment
+        run: |
+          echo "🔍 외부에서 헬스체크 검증 중..."
+          sleep 5
+          
+          # VPS_HOST를 사용하여 헬스체크 URL 구성
+          HEALTH_URL="https://${{ secrets.VPS_HOST }}/health"
+          echo "헬스체크 URL: $HEALTH_URL"
+          
+          MAX_ATTEMPTS=5
+          ATTEMPT=1
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL" 2>/dev/null || echo "000")
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "✅ 외부 헬스체크 통과! (HTTP $HTTP_STATUS)"
+              exit 0
+            fi
+            echo "대기 중... (HTTP $HTTP_STATUS, $ATTEMPT/$MAX_ATTEMPTS)"
+            sleep 3
+            ATTEMPT=$((ATTEMPT + 1))
+          done
+          
+          echo "⚠️ 외부 헬스체크 타임아웃 (서버 내부에서는 정상일 수 있음)"
+          # 경고만 표시하고 실패로 처리하지 않음 (DNS 전파 등의 이유로)
+
+      - name: Cleanup SSH
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+  notify-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: failure()
+    
+    steps:
+      - name: Create failure summary
+        run: |
+          echo "## ❌ 배포 실패" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "배포가 실패했습니다. 로그를 확인해주세요." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**커밋:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**브랜치:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**시간:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY

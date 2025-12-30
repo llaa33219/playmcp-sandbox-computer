@@ -13,6 +13,7 @@
 #   --port PORT    사용할 포트 (기본: 3000)
 #   --domain DOMAIN  도메인 설정 (선택사항)
 #   --repo URL       Git 저장소 URL (로컬 소스 없을 때 사용)
+#   --update         업데이트 모드 (의존성 설치 생략, 빨른 배포)
 #
 
 set -e
@@ -46,6 +47,7 @@ REPO_URL=""  # Git 저장소 URL (선택사항, 로컬 설치 시 불필요)
 PORT=$DEFAULT_PORT
 DOMAIN=""
 UNINSTALL=false
+UPDATE_MODE=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -64,6 +66,10 @@ while [[ $# -gt 0 ]]; do
         --repo)
             REPO_URL="$2"
             shift 2
+            ;;
+        --update)
+            UPDATE_MODE=true
+            shift
             ;;
         *)
             log_error "알 수 없는 옵션: $1"
@@ -524,6 +530,12 @@ main() {
     detect_os
     detect_package_manager
     
+    # 업데이트 모드
+    if [ "$UPDATE_MODE" = true ]; then
+        update_application
+        exit 0
+    fi
+    
     # 기존 설치 확인 및 백업
     if check_existing_installation; then
         create_backup
@@ -562,6 +574,71 @@ main() {
     
     # 완료 메시지
     print_completion_message
+}
+
+# ============================================================================
+# 업데이트 모드 (빠른 배포)
+# ============================================================================
+update_application() {
+    echo ""
+    echo "============================================================"
+    echo "  MCP Container Server - 업데이트 모드"
+    echo "============================================================"
+    echo ""
+    
+    if [ ! -d "$APP_DIR" ]; then
+        log_error "기존 설치를 찾을 수 없습니다. --update 없이 실행하세요."
+        exit 1
+    fi
+    
+    # 백업 생성
+    create_backup
+    
+    cd "$APP_DIR"
+    
+    # Git 업데이트 (기존 저장소인 경우)
+    if [ -d ".git" ]; then
+        log_info "Git에서 최신 코드 가져오는 중..."
+        git fetch origin main 2>/dev/null || git fetch origin master 2>/dev/null || true
+        git reset --hard origin/main 2>/dev/null || git reset --hard origin/master 2>/dev/null || true
+    else
+        log_warn "Git 저장소가 아닙니다. 파일 복사 모드로 진행합니다."
+        # 스크립트 위치에서 복사
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+        if [ -f "$PROJECT_DIR/package.json" ]; then
+            cp -r "$PROJECT_DIR/src" "$APP_DIR/" 2>/dev/null || true
+            cp "$PROJECT_DIR/package.json" "$APP_DIR/" 2>/dev/null || true
+            cp "$PROJECT_DIR/package-lock.json" "$APP_DIR/" 2>/dev/null || true
+            cp "$PROJECT_DIR/tsconfig.json" "$APP_DIR/" 2>/dev/null || true
+        fi
+    fi
+    
+    # 의존성 설치 및 빌드
+    log_info "NPM 의존성 설치 중..."
+    npm ci 2>/dev/null || npm install
+    
+    log_info "TypeScript 빌드 중..."
+    npm run build
+    
+    # 프로덕션 의존성만 유지
+    npm prune --omit=dev
+    
+    # 서비스 재시작
+    log_info "서비스 재시작 중..."
+    systemctl restart "$SERVICE_NAME"
+    
+    # 헬스체크 검증
+    verify_health_check
+    
+    # 오래된 백업 정리 (최근 3개만 유지)
+    log_info "오래된 백업 정리 중..."
+    ls -dt /opt/${APP_NAME}-backup-* 2>/dev/null | tail -n +4 | xargs rm -rf 2>/dev/null || true
+    
+    echo ""
+    echo "============================================================"
+    echo -e "${GREEN}✓ 업데이트 완료!${NC}"
+    echo "============================================================"
 }
 
 # ============================================================================

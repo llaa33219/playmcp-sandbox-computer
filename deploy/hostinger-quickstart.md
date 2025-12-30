@@ -1,5 +1,18 @@
 # Hostinger VPS 빠른 시작 가이드
 
+**도메인**: `playmcp-sandbox-computer.bloupla.net`
+
+## 목차
+1. [VPS 준비](#1-hostinger-vps-준비)
+2. [원클릭 설치](#2-원클릭-설치)
+3. [방화벽 설정](#3-hostinger-방화벽-설정)
+4. [도메인 연결 + HTTPS](#4-도메인-연결--https-설정)
+5. [GitHub Actions 자동 배포](#5-github-actions-자동-배포-설정)
+6. [확인 및 테스트](#6-확인-및-테스트)
+7. [문제 해결](#7-문제-해결)
+
+---
+
 ## 1. Hostinger VPS 준비
 
 ### VPS 플랜 선택
@@ -58,59 +71,85 @@ Hostinger VPS 대시보드에서도 방화벽을 설정해야 합니다:
 
 ---
 
-## 4. 도메인 연결 (선택사항)
+## 4. 도메인 연결 + HTTPS 설정
 
-### A. Hostinger DNS 설정
+### A. DNS 설정 (Hostinger 또는 Cloudflare)
 
-1. **도메인** → **DNS 관리**
+1. DNS 관리 페이지로 이동
 2. A 레코드 추가:
-   - 이름: `mcp` (또는 원하는 서브도메인)
-   - IPv4 주소: VPS IP 주소
-   - TTL: 14400
+   - **이름**: `playmcp-sandbox-computer` (또는 전체 서브도메인)
+   - **IPv4 주소**: VPS IP 주소
+   - **TTL**: 14400 (또는 Auto)
 
-### B. Nginx + Let's Encrypt HTTPS 설정
+### B. HTTPS 원클릭 설정 (권장)
 
 ```bash
-# Nginx 설치
+# HTTPS 자동 설정 스크립트 실행
+sudo bash deploy/setup-https.sh --domain playmcp-sandbox-computer.bloupla.net
+```
+
+이 스크립트가 자동으로:
+- Nginx 설치 및 설정
+- Let's Encrypt SSL 인증서 발급
+- HTTPS 리다이렉트 설정
+- BASE_URL 업데이트
+- 인증서 자동 갱신 설정
+
+### C. 수동 HTTPS 설정 (선택)
+
+```bash
+# Nginx 및 Certbot 설치
 sudo apt install -y nginx certbot python3-certbot-nginx
 
-# Nginx 설정
-sudo tee /etc/nginx/sites-available/mcp-container << 'EOF'
-server {
-    listen 80;
-    server_name mcp.example.com;  # 실제 도메인으로 변경
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-        proxy_read_timeout 86400;
-    }
-}
-EOF
-
-# 사이트 활성화
-sudo ln -s /etc/nginx/sites-available/mcp-container /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl restart nginx
-
 # SSL 인증서 발급
-sudo certbot --nginx -d mcp.example.com
+sudo certbot --nginx -d playmcp-sandbox-computer.bloupla.net
 
 # BASE_URL 업데이트
-sudo sed -i 's|BASE_URL=.*|BASE_URL=https://mcp.example.com|' /opt/mcp-container-server/.env
+sudo sed -i 's|BASE_URL=.*|BASE_URL=https://playmcp-sandbox-computer.bloupla.net|' /opt/mcp-container-server/.env
 sudo systemctl restart mcp-container
 ```
 
 ---
 
-## 5. 확인 및 테스트
+## 5. GitHub Actions 자동 배포 설정
+
+GitHub에 코드를 푸시하면 자동으로 VPS에 배포됩니다.
+
+### A. SSH 키 생성 (VPS에서)
+
+```bash
+# 배포용 SSH 키 생성
+ssh-keygen -t ed25519 -C "github-actions" -f ~/.ssh/github_actions -N ""
+
+# 공개키 등록
+cat ~/.ssh/github_actions.pub >> ~/.ssh/authorized_keys
+
+# 개인키 확인 (GitHub Secrets에 추가할 내용)
+cat ~/.ssh/github_actions
+```
+
+### B. GitHub Secrets 설정
+
+GitHub 저장소 → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
+
+| Secret 이름 | 값 |
+|-------------|----|
+| `VPS_HOST` | `playmcp-sandbox-computer.bloupla.net` (또는 VPS IP) |
+| `VPS_USER` | `root` |
+| `VPS_SSH_KEY` | SSH 개인키 전체 내용 |
+| `VPS_PORT` | `22` (선택사항) |
+
+### C. 자동 배포 테스트
+
+1. 코드 변경 후 `main` 브랜치에 푸시
+2. **Actions** 탭에서 배포 상태 확인
+3. 배포 완료 후 헬스체크 자동 실행
+
+자세한 내용은 [CICD-SETUP.md](./CICD-SETUP.md) 참조
+
+---
+
+## 6. 확인 및 테스트
 
 ### 서비스 상태 확인
 
@@ -140,7 +179,7 @@ Claude Desktop 또는 다른 MCP 클라이언트에서:
 {
   "mcpServers": {
     "container-sandbox": {
-      "url": "http://YOUR_VPS_IP:3000/"
+      "url": "https://playmcp-sandbox-computer.bloupla.net/"
     }
   }
 }
@@ -148,7 +187,7 @@ Claude Desktop 또는 다른 MCP 클라이언트에서:
 
 ---
 
-## 6. 문제 해결
+## 7. 문제 해결
 
 ### Podman 권한 오류
 
@@ -197,7 +236,7 @@ sudo bash deploy/setup.sh
 
 ---
 
-## 7. 유용한 명령어
+## 8. 유용한 명령어
 
 | 작업 | 명령어 |
 |------|--------|
@@ -211,7 +250,7 @@ sudo bash deploy/setup.sh
 
 ---
 
-## 8. 보안 권장사항
+## 9. 보안 권장사항
 
 1. **SSH 키 인증 사용**: 비밀번호 대신 SSH 키 사용
 2. **방화벽 설정**: 필요한 포트만 개방

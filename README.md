@@ -35,6 +35,8 @@ AI가 리눅스 컨테이너를 생성하고 명령어를 실행할 수 있는 M
 
 VPS에 직접 배포하면 Container-in-Container 보안 제한 없이 완전한 제어권을 가질 수 있습니다.
 
+**라이브 서버**: `https://playmcp-sandbox-computer.bloupla.net/`
+
 #### 원클릭 설치 (권장)
 
 프로젝트를 서버에 클론한 후:
@@ -120,6 +122,32 @@ sudo ufw allow 3000/tcp  # Ubuntu
 # 또는
 sudo firewall-cmd --permanent --add-port=3000/tcp && sudo firewall-cmd --reload  # Fedora/CentOS
 ```
+
+#### HTTPS 설정
+
+```bash
+# 도메인 연결 후 HTTPS 자동 설정
+sudo bash deploy/setup-https.sh --domain your-domain.com
+```
+
+---
+
+### GitHub Actions 자동 배포 (CI/CD)
+
+main 브랜치에 푸시하면 자동으로 VPS에 배포됩니다.
+
+1. VPS에서 배포용 SSH 키 생성:
+   ```bash
+   ssh-keygen -t ed25519 -C "github-actions" -f ~/.ssh/github_actions -N ""
+   cat ~/.ssh/github_actions.pub >> ~/.ssh/authorized_keys
+   ```
+
+2. GitHub Secrets 설정 (Settings → Secrets → Actions):
+   - `VPS_HOST`: VPS IP 또는 도메인
+   - `VPS_USER`: `root`
+   - `VPS_SSH_KEY`: SSH 개인키 내용
+
+자세한 내용은 [deploy/CICD-SETUP.md](deploy/CICD-SETUP.md) 참조
 
 ---
 

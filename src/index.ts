@@ -288,7 +288,7 @@ function generatePreviewPage(fileInfo: FileInfo, previewType: PreviewType, fileI
       }
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        background: #EEE;
         min-height: 100vh;
         color: #e4e4e4;
       }
@@ -302,11 +302,11 @@ function generatePreviewPage(fileInfo: FileInfo, previewType: PreviewType, fileI
         align-items: center;
         justify-content: space-between;
         padding: 20px 30px;
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(10px);
+        background: #444;
         border-radius: 16px;
         margin-bottom: 20px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: none;
+        box-shadow: 8px 8px 0px #000;
       }
       .file-info {
         display: flex;
@@ -328,35 +328,35 @@ function generatePreviewPage(fileInfo: FileInfo, previewType: PreviewType, fileI
         align-items: center;
         gap: 8px;
         padding: 12px 24px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: #007BFF;
         color: white;
         text-decoration: none;
         border-radius: 12px;
         font-weight: 600;
         font-size: 1rem;
         transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        box-shadow: 6px 6px 0px #009;
       }
       .download-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        transform: translateY(4px);
+        box-shadow: 2px 2px 0px #009;
       }
       .download-btn svg {
         width: 20px;
         height: 20px;
       }
       .preview-container {
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(10px);
+        background: #444;
         border-radius: 16px;
         overflow: hidden;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid #444;
+        box-shadow: 8px 8px 0px #000;
       }
       .preview-title {
         padding: 15px 25px;
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        font-size: 0.9rem;
-        color: #a0a0a0;
+        font-size: 1.1rem;
+        color: #FFF;
         text-transform: uppercase;
         letter-spacing: 0.5px;
       }
@@ -653,17 +653,32 @@ function validateFileAccess(fileId: string, res: express.Response): FileInfo | n
   return fileInfo;
 }
 
-// 파일 미리보기 페이지
-app.get('/files/:fileId', (req, res) => {
+// 파일 다운로드 (더 구체적인 라우트를 먼저 정의)
+app.get('/files/:fileId/download', (req, res) => {
   const { fileId } = req.params;
   const fileInfo = validateFileAccess(fileId, res);
   if (!fileInfo) return;
   
-  const previewType = getPreviewType(fileInfo.mimeType, fileInfo.fileName);
-  const html = generatePreviewPage(fileInfo, previewType, fileId);
+  // ASCII 파일명 (fallback용)
+  const asciiFileName = fileInfo.fileName.replace(/[^\x00-\x7F]/g, '_');
   
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(html);
+  res.setHeader('Content-Type', 'application/octet-stream');
+  // RFC 5987 형식으로 Content-Disposition 설정 (한글 파일명 지원)
+  res.setHeader(
+    'Content-Disposition', 
+    `attachment; filename="${asciiFileName}"; filename*=UTF-8''${encodeURIComponent(fileInfo.fileName)}`
+  );
+  res.setHeader('Content-Length', fileInfo.size);
+  
+  const fileStream = fs.createReadStream(fileInfo.localPath);
+  fileStream.pipe(res);
+  
+  fileStream.on('error', (error) => {
+    console.error(`[File] 다운로드 오류: ${fileId}`, error);
+    if (!res.headersSent) {
+      res.status(500).send('파일 다운로드 중 오류가 발생했습니다.');
+    }
+  });
 });
 
 // 원본 파일 스트리밍 (미리보기용)
@@ -675,6 +690,8 @@ app.get('/files/:fileId/raw', (req, res) => {
   res.setHeader('Content-Type', fileInfo.mimeType);
   res.setHeader('Content-Length', fileInfo.size);
   res.setHeader('Cache-Control', 'public, max-age=3600');
+  // raw는 inline으로 표시 (다운로드 안 함)
+  res.setHeader('Content-Disposition', 'inline');
   
   const fileStream = fs.createReadStream(fileInfo.localPath);
   fileStream.pipe(res);
@@ -687,25 +704,17 @@ app.get('/files/:fileId/raw', (req, res) => {
   });
 });
 
-// 파일 다운로드
-app.get('/files/:fileId/download', (req, res) => {
+// 파일 미리보기 페이지 (가장 일반적인 라우트는 마지막에)
+app.get('/files/:fileId', (req, res) => {
   const { fileId } = req.params;
   const fileInfo = validateFileAccess(fileId, res);
   if (!fileInfo) return;
   
-  res.setHeader('Content-Type', fileInfo.mimeType);
-  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileInfo.fileName)}"`);
-  res.setHeader('Content-Length', fileInfo.size);
+  const previewType = getPreviewType(fileInfo.mimeType, fileInfo.fileName);
+  const html = generatePreviewPage(fileInfo, previewType, fileId);
   
-  const fileStream = fs.createReadStream(fileInfo.localPath);
-  fileStream.pipe(res);
-  
-  fileStream.on('error', (error) => {
-    console.error(`[File] 다운로드 오류: ${fileId}`, error);
-    if (!res.headersSent) {
-      res.status(500).send('파일 다운로드 중 오류가 발생했습니다.');
-    }
-  });
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
 });
 
 // 서버 시작

@@ -57,9 +57,11 @@ Railway 대시보드에서 다음 환경변수를 설정하세요:
 성능 향상을 위해 Railway 대시보드에서 Volume을 추가하세요:
 
 1. Settings → Volumes → Add Volume
-2. 마운트 경로: `/var/lib/containers`
+2. 마운트 경로: `/var/lib/containers/storage`
 
 Volume을 추가하면 컨테이너 이미지가 캐싱되어 생성 속도가 향상됩니다.
+
+**참고**: 컨테이너가 root가 아닌 사용자로 실행되면 환경변수 `RAILWAY_RUN_UID=0`을 설정하세요.
 
 ## 로컬 개발
 

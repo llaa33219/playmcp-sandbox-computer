@@ -58,7 +58,7 @@ export function registerTools(server: McpServer): void {
   // 3. 명령어 실행 도구
   server.tool(
     'execute_command',
-    '컨테이너에서 쉘 명령어를 실행합니다. 터미널/CLI/CMD 명령어, 코드 실행, 파일 작업 등을 수행할 수 있습니다. 반드시 create_container로 먼저 컨테이너를 생성한 후 사용하세요. 명령어 실행이 30초 이상 소요되면 비동기 모드로 전환됩니다.',
+    '컨테이너에서 쉘 명령어를 실행합니다. 터미널 명령어, 코드 실행, 파일 작업 등을 수행할 수 있습니다. 반드시 create_container로 먼저 컨테이너를 생성한 후 사용하세요. 명령어 실행이 30초 이상 소요되면 비동기 모드로 전환됩니다.',
     {
       container_id: z.string().describe('명령어를 실행할 컨테이너의 ID'),
       command: z.string().describe('실행할 쉘 명령어'),

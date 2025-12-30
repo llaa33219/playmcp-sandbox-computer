@@ -29,9 +29,105 @@ AI가 리눅스 컨테이너를 생성하고 명령어를 실행할 수 있는 M
 - `--cap-drop=ALL`: 모든 Linux capabilities 제거
 - `--security-opt=no-new-privileges`: 권한 상승 방지
 
-## 배포 (Railway)
+## 배포
 
-### 1. Railway 프로젝트 생성
+### VPS 배포 (Hostinger, Vultr, DigitalOcean 등)
+
+VPS에 직접 배포하면 Container-in-Container 보안 제한 없이 완전한 제어권을 가질 수 있습니다.
+
+#### 원클릭 설치 (권장)
+
+프로젝트를 서버에 클론한 후:
+
+```bash
+# 프로젝트를 서버에 업로드 후
+cd /path/to/project
+sudo bash deploy/setup.sh
+```
+
+또는 옵션과 함께:
+
+```bash
+# 커스텀 포트 사용
+sudo bash deploy/setup.sh --port 8080
+
+# 도메인 설정 (HTTPS용)
+sudo bash deploy/setup.sh --domain example.com
+```
+
+#### 지원 OS
+
+- Ubuntu 20.04+
+- Debian 11+
+- Fedora 38+
+- CentOS Stream 9+
+- AlmaLinux 9+
+- Rocky Linux 9+
+
+#### 설치 후 확인
+
+```bash
+# 서비스 상태 확인
+systemctl status mcp-container
+
+# 로그 확인
+journalctl -u mcp-container -f
+
+# 헬스체크
+curl http://YOUR_SERVER_IP:3000/health
+```
+
+#### 제거 (롤백)
+
+```bash
+sudo bash deploy/setup.sh --uninstall
+```
+
+#### 수동 설치
+
+원클릭 설치가 작동하지 않는 경우:
+
+```bash
+# 1. 의존성 설치 (Ubuntu/Debian)
+sudo apt update
+sudo apt install -y podman nodejs npm git
+
+# 또는 (Fedora/CentOS)
+sudo dnf install -y podman nodejs npm git
+
+# 2. 프로젝트 설정
+# 프로젝트 파일을 /opt/mcp-container-server에 복사
+cp -r /path/to/project /opt/mcp-container-server
+cd /opt/mcp-container-server
+npm install
+npm run build
+
+# 3. 환경변수 설정
+cat > .env << EOF
+PORT=3000
+BASE_URL=http://YOUR_SERVER_IP:3000
+NODE_ENV=production
+EOF
+
+# 4. systemd 서비스 설정
+sudo cp deploy/mcp-container.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable mcp-container
+sudo systemctl start mcp-container
+
+# 5. 방화벽 설정
+sudo ufw allow 3000/tcp  # Ubuntu
+# 또는
+sudo firewall-cmd --permanent --add-port=3000/tcp && sudo firewall-cmd --reload  # Fedora/CentOS
+```
+
+---
+
+### Railway 배포 (제한적)
+
+> ⚠️ **주의**: Railway는 Container-in-Container를 보안상 제한할 수 있습니다. VPS 배포를 권장합니다.
+
+#### 1. Railway 프로젝트 생성
 
 ```bash
 # Railway CLI 설치
@@ -43,7 +139,7 @@ railway init
 railway up
 ```
 
-### 2. 환경변수 설정
+#### 2. 환경변수 설정
 
 Railway 대시보드에서 다음 환경변수를 설정하세요:
 
@@ -52,7 +148,7 @@ Railway 대시보드에서 다음 환경변수를 설정하세요:
 | `BASE_URL` | 서버 공개 URL | `https://your-app.up.railway.app` |
 | `PORT` | 포트 (자동 설정됨) | `3000` |
 
-### 3. Volume 설정 (권장)
+#### 3. Volume 설정 (권장)
 
 성능 향상을 위해 Railway 대시보드에서 Volume을 추가하세요:
 

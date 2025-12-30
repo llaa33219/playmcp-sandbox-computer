@@ -1,0 +1,40 @@
+# MCP Container Sandbox Server - systemd 서비스 파일
+# 이 파일은 setup.sh 스크립트에 의해 자동으로 /etc/systemd/system/에 설치됩니다.
+# 수동 설치 시 이 파일을 /etc/systemd/system/mcp-container.service로 복사하세요.
+#
+# 사용법:
+#   sudo cp deploy/mcp-container.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable mcp-container
+#   sudo systemctl start mcp-container
+
+[Unit]
+Description=MCP Container Sandbox Server
+Documentation=https://github.com/YOUR_USERNAME/YOUR_REPO
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mcp-container-server
+EnvironmentFile=/opt/mcp-container-server/.env
+ExecStart=/usr/bin/node /opt/mcp-container-server/dist/index.js
+Restart=always
+RestartSec=10
+
+# Podman 실행을 위해 권한 필요
+NoNewPrivileges=false
+ProtectSystem=false
+PrivateTmp=false
+
+# 로깅 설정
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mcp-container
+
+# 리소스 제한
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

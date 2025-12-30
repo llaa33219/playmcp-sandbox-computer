@@ -611,8 +611,8 @@ function validateFileAccess(fileId: string, res: express.Response): FileInfo | n
   <meta charset="UTF-8">
   <title>파일을 찾을 수 없음</title>
   <style>
-    body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #1a1a2e; color: #fff; }
-    .error { text-align: center; }
+    body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #EEE; color: #FFF; }
+    .error { text-align: center; background: #444; padding: 16px; brorder-radius: 16px; box-shadow: 8px 8px 0px #000; }
     h1 { font-size: 1.5rem; margin-bottom: 10px; }
     p { color: #a0a0a0; }
   </style>
@@ -634,8 +634,8 @@ function validateFileAccess(fileId: string, res: express.Response): FileInfo | n
   <meta charset="UTF-8">
   <title>파일을 찾을 수 없음</title>
   <style>
-    body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #1a1a2e; color: #fff; }
-    .error { text-align: center; }
+    body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #EEE; color: #FFF; }
+    .error { text-align: center; background: #444; padding: 16px; brorder-radius: 16px; box-shadow: 8px 8px 0px #000; }
     h1 { font-size: 1.5rem; margin-bottom: 10px; }
     p { color: #a0a0a0; }
   </style>

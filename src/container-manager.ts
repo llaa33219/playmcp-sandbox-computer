@@ -42,6 +42,93 @@ const CONTAINER_LIMITS = {
 const activeContainers: Map<string, ContainerInfo> = new Map();
 
 /**
+ * 명령어와 패키지 이름이 다른 경우의 매핑 테이블
+ * Alpine Linux(apk) 기준
+ */
+const COMMAND_TO_PACKAGE: Record<string, string> = {
+  python: 'python3',
+  python3: 'python3',
+  pip: 'py3-pip',
+  pip3: 'py3-pip',
+  node: 'nodejs',
+  npm: 'nodejs npm',
+  git: 'git',
+  curl: 'curl',
+  wget: 'wget',
+  vim: 'vim',
+  nano: 'nano',
+  jq: 'jq',
+  make: 'make',
+  gcc: 'gcc',
+  g++: 'g++',
+  bash: 'bash',
+  zsh: 'zsh',
+  ssh: 'openssh-client',
+  scp: 'openssh-client',
+  rsync: 'rsync',
+  tar: 'tar',
+  zip: 'zip',
+  unzip: 'unzip',
+  gzip: 'gzip',
+  htop: 'htop',
+  netcat: 'netcat-openbsd',
+  nc: 'netcat-openbsd',
+  nmap: 'nmap',
+  ping: 'iputils',
+  dig: 'bind-tools',
+  nslookup: 'bind-tools',
+  ffmpeg: 'ffmpeg',
+  imagemagick: 'imagemagick',
+  convert: 'imagemagick',
+  ruby: 'ruby',
+  gem: 'ruby',
+  go: 'go',
+  rustc: 'rust',
+  cargo: 'cargo',
+  java: 'openjdk11',
+  javac: 'openjdk11',
+  perl: 'perl',
+  php: 'php',
+  lua: 'lua',
+  sqlite3: 'sqlite',
+  psql: 'postgresql-client',
+  mysql: 'mysql-client',
+  redis-cli: 'redis',
+  mongosh: 'mongodb-tools',
+};
+
+/**
+ * 명령어 실행 결과에서 패키지 누락 오류를 감지하고 설치 안내 메시지를 생성합니다.
+ */
+function detectMissingPackage(output: string, exitCode: number | null): string | null {
+  if (exitCode === 0) return null;
+  
+  // 패키지 누락 오류 패턴들
+  const patterns = [
+    /sh: ([\w.-]+): not found/i,
+    /bash: ([\w.-]+): command not found/i,
+    /([\w.-]+): command not found/i,
+    /([\w.-]+): No such file or directory/i,
+    /-sh: ([\w.-]+): not found/i,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = output.match(pattern);
+    if (match && match[1]) {
+      const missingCommand = match[1];
+      const packageName = COMMAND_TO_PACKAGE[missingCommand] || missingCommand;
+      
+      return `\n\n💡 **패키지 누락 감지**: \`${missingCommand}\` 명령어를 찾을 수 없습니다.\n` +
+        `다음 명령어로 패키지를 설치한 후 다시 시도하세요:\n\n` +
+        `\`\`\`\napk add ${packageName}\n\`\`\`\n\n` +
+        `execute_command로 위 설치 명령어를 먼저 실행한 다음, 원래 명령어를 다시 실행하세요.`;
+    }
+  }
+  
+  return null;
+}
+
+/**
  * 컨테이너 자동 파괴 타이머 저장소
  */
 const containerTimers: Map<string, NodeJS.Timeout> = new Map();
@@ -220,9 +307,18 @@ export async function executeCommand(
       
       if (!isResolved) {
         isResolved = true;
+        
+        let finalOutput = output || '(출력 없음)';
+        
+        // 패키지 누락 오류 감지 및 설치 안내 추가
+        const packageHint = detectMissingPackage(output, exitCode);
+        if (packageHint) {
+          finalOutput += packageHint;
+        }
+        
         resolve({
           success: exitCode === 0,
-          output: output || '(출력 없음)',
+          output: finalOutput,
           isAsync: false,
           exitCode: exitCode ?? undefined,
         });

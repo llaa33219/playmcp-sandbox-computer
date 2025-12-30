@@ -60,7 +60,7 @@ const COMMAND_TO_PACKAGE: Record<string, string> = {
   jq: 'jq',
   make: 'make',
   gcc: 'gcc',
-  g++: 'g++',
+  'g++': 'g++',
   bash: 'bash',
   zsh: 'zsh',
   ssh: 'openssh-client',
@@ -93,7 +93,7 @@ const COMMAND_TO_PACKAGE: Record<string, string> = {
   sqlite3: 'sqlite',
   psql: 'postgresql-client',
   mysql: 'mysql-client',
-  redis-cli: 'redis',
+  'redis-cli': 'redis',
   mongosh: 'mongodb-tools',
 };
 

@@ -659,23 +659,10 @@ app.get('/files/:fileId/download', (req, res) => {
   const fileInfo = validateFileAccess(fileId, res);
   if (!fileInfo) return;
   
-  // ASCII 파일명 (fallback용)
-  const asciiFileName = fileInfo.fileName.replace(/[^\x00-\x7F]/g, '_');
-  
-  res.setHeader('Content-Type', 'application/octet-stream');
-  // RFC 5987 형식으로 Content-Disposition 설정 (한글 파일명 지원)
-  res.setHeader(
-    'Content-Disposition', 
-    `attachment; filename="${asciiFileName}"; filename*=UTF-8''${encodeURIComponent(fileInfo.fileName)}`
-  );
-  res.setHeader('Content-Length', fileInfo.size);
-  
-  const fileStream = fs.createReadStream(fileInfo.localPath);
-  fileStream.pipe(res);
-  
-  fileStream.on('error', (error) => {
-    console.error(`[File] 다운로드 오류: ${fileId}`, error);
-    if (!res.headersSent) {
+  // Express의 res.download() 메서드 사용 - 확실한 다운로드 처리
+  res.download(fileInfo.localPath, fileInfo.fileName, (error) => {
+    if (error && !res.headersSent) {
+      console.error(`[File] 다운로드 오류: ${fileId}`, error);
       res.status(500).send('파일 다운로드 중 오류가 발생했습니다.');
     }
   });

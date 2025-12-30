@@ -20,7 +20,7 @@ ssh root@YOUR_VPS_IP
 
 # 프로젝트 설치 (최초 1회)
 cd /opt
-git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git mcp-container-server
+git clone https://github.com/llaa33219/playmcp-sandbox-computer.git mcp-container-server
 cd mcp-container-server
 
 # 초기 설치 실행
